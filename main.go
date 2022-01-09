@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -120,15 +119,16 @@ func main() {
 type handler struct{}
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	randomRecurse(r.Context(), 0, 10, int(200*time.Millisecond), int(1000*time.Millisecond))
+	ctx, span := tracer.Start(r.Context(), "handler")
+	defer span.End()
+	randomRecurse(ctx, 0, 10, int(200*time.Millisecond), int(1000*time.Millisecond))
 	fmt.Fprint(w, "Hello, World!")
 }
 
 func randomRecurse(ctx context.Context, curr, max, minDur, maxDur int) {
-	span := trace.SpanFromContext(ctx)
-	span.AddEvent("random-recurse", trace.WithAttributes(
-		attribute.String("depth", fmt.Sprintf("%d", curr)),
-	))
+	ctx, span := tracer.Start(ctx, "recurse")
+	defer span.End()
+
 	time.Sleep(time.Duration(rand.Intn(maxDur-minDur) + minDur))
 	if curr == max {
 		return
