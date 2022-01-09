@@ -4,11 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -99,10 +97,10 @@ func main() {
 	prometheus.MustRegister(counter, latency, inFlight)
 
 	http.Handle("/", promhttp.InstrumentHandlerCounter(
-		counter, promhttp.InstrumentHandlerInFlight(inFlight, InstrumentedHandler(os.Stdout, new(handler))),
+		counter, promhttp.InstrumentHandlerInFlight(inFlight, InstrumentedHandler(new(handler))),
 	))
 
-	http.Handle("/metrics", InstrumentedHandler(os.Stdout, promhttp.HandlerFor(
+	http.Handle("/metrics", InstrumentedHandler(promhttp.HandlerFor(
 		prometheus.DefaultGatherer,
 		promhttp.HandlerOpts{
 			// Opt into OpenMetrics to support exemplars
@@ -140,7 +138,7 @@ func randomRecurse(ctx context.Context, curr, max, minDur, maxDur int) {
 	}
 }
 
-func InstrumentedHandler(w io.Writer, next http.Handler) http.Handler {
+func InstrumentedHandler(next http.Handler) http.Handler {
 	handlerFunc := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		d := newDelegator(w)
