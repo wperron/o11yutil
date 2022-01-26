@@ -5,4 +5,4 @@ RUN CGO_ENABLED=0 GO_OS=linux GO_ARCH=amd64 go build -o /usr/local/bin/slowpoke 
 
 FROM scratch
 COPY --from=build /usr/local/bin/slowpoke /slowpoke
-CMD ["/slowpoke", "-addr=:8080", "-trace=tempo:55680"]
+ENTRYPOINT ["/slowpoke"]
