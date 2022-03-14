@@ -12,5 +12,9 @@ trace-server:
 
 all: zombie trace-server
 
+docker: all
+	docker build . -t wperron/zombie:latest -f ./cmd/zombie/Dockerfile
+	docker build . -t wperron/trace-server:latest -f ./cmd/trace-server/Dockerfile
+
 test:
 	go test ./... -v -count=1

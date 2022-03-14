@@ -7,12 +7,15 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/wperron/o11yutil/debugprocessor"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -27,7 +30,6 @@ var (
 	traceEndpoint = flag.String("trace", "", "Address for the OpenTelemetry Collector.")
 	tracer        trace.Tracer
 	latency       prometheus.Histogram
-	client        http.Client
 )
 
 func main() {
@@ -38,7 +40,8 @@ func main() {
 	exp, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithInsecure(),
 		otlptracegrpc.WithEndpoint(*traceEndpoint),
-		otlptracegrpc.WithDialOption(grpc.WithBlock(), grpc.WithTimeout(5*time.Second)),
+		// TODO(wperron) replace grpc.WithTimeout, deprecated
+		otlptracegrpc.WithDialOption(grpc.WithBlock(), grpc.WithTimeout(5*time.Second)), // nolint
 	)
 	if err != nil {
 		log.Fatalf("failed to create trace exporter: %s", err)
@@ -47,17 +50,21 @@ func main() {
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			// the service name used to display traces in backends
-			semconv.ServiceNameKey.String("slowpoke-service"),
+			semconv.ServiceNameKey.String("trace-server"),
 		),
 	)
 	if err != nil {
 		log.Fatalf("failed to create trace resource: %s", err)
 	}
 
+	// Test debug span processor
+	debug := debugprocessor.New().WithWriter(os.Stdout).Build()
+
 	bsp := sdktrace.NewBatchSpanProcessor(exp)
 	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 		sdktrace.WithResource(res),
+		sdktrace.WithSpanProcessor(debug),
 		sdktrace.WithSpanProcessor(bsp),
 	)
 
@@ -65,11 +72,9 @@ func main() {
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	otel.SetTracerProvider(tracerProvider)
 
-	defer tracerProvider.Shutdown(ctx)
+	defer tracerProvider.Shutdown(ctx) // nolint
 
-	tracer = otel.Tracer("slowpoke-api")
-
-	client = http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
+	tracer = otel.Tracer("trace-server")
 
 	// Create and register basic prometheus metrics for the API's usage
 	counter := prometheus.NewCounterVec(
@@ -124,10 +129,14 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func randomRecurse(ctx context.Context, curr, max, minDur, maxDur int) {
-	ctx, span := tracer.Start(ctx, "recurse")
+	dur := time.Duration(rand.Intn(maxDur-minDur) + minDur)
+	ctx, span := tracer.Start(ctx, "recurse", trace.WithAttributes(
+		attribute.Int("duration", int(dur.Milliseconds())),
+		attribute.Int("depth", curr),
+	))
 	defer span.End()
 
-	time.Sleep(time.Duration(rand.Intn(maxDur-minDur) + minDur))
+	time.Sleep(dur)
 	if curr == max {
 		return
 	}

@@ -2,6 +2,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -12,6 +13,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/wperron/o11yutil/config"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -34,6 +38,7 @@ type Pinger interface {
 
 type pinger struct {
 	client *http.Client
+	tracer trace.Tracer
 }
 
 type Result struct {
@@ -104,10 +109,9 @@ func init() {
 	prometheus.MustRegister(requestCounter, tlsLatencyVec, dnsLatencyVec, reqLatencyVec, inFlightGauge)
 }
 
-func NewInstrumentedPinger(target string) *pinger {
-	client := &http.Client{}
-	*client = *http.DefaultClient
-	client.Timeout = 1 * time.Second
+func NewInstrumentedPinger(target string, tracer trace.Tracer) *pinger {
+	client := &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
+	client.Timeout = 10 * time.Second
 
 	// Wrap the default RoundTripper with middleware.
 	roundTripper := InstrumentRoundTripperInFlight(inFlightGauge, &target,
@@ -120,10 +124,11 @@ func NewInstrumentedPinger(target string) *pinger {
 	client.Transport = roundTripper
 	return &pinger{
 		client: client,
+		tracer: tracer,
 	}
 }
 
-func (p *pinger) Ping(t config.Target, out chan<- Result, e chan<- error) {
+func (p *pinger) Ping(ctx context.Context, t config.Target, out chan<- Result, e chan<- error) {
 	u, err := url.Parse(t.Url)
 	if err != nil {
 		log.Fatalf("unable to parse URL %s", t.Url)
@@ -152,7 +157,24 @@ func (p *pinger) Ping(t config.Target, out chan<- Result, e chan<- error) {
 		time.Sleep(Jitter(delay, jitter))
 
 		start := time.Now()
+
+		var span trace.Span
+		if p.tracer != nil {
+			var currCtx context.Context
+			currCtx, span = p.tracer.Start(ctx, "zombie.ping",
+				trace.WithSpanKind(trace.SpanKindClient),
+				trace.WithAttributes(
+					attribute.String("target", u.Host),
+				))
+
+			// Overwrite the request context for the one containing the trace context
+			req = *req.WithContext(currCtx)
+		}
+
 		res, err := p.client.Do(&req)
+		if span != nil {
+			span.End()
+		}
 		lat := time.Since(start)
 		if err != nil {
 			e <- fmt.Errorf("error: %s", err)

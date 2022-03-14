@@ -3,18 +3,12 @@ api:
   addr: ":8082"
 
 targets:
-  - name: google1
-    url: "https://google.com"
-    delay: 10000 # 10,000ms, or 10s
+  - name: trace-server
+    url: "http://trace-server:8080"
+    delay: 1000 # 1,000ms, or 1s
     jitter: 0.2
-    workers: 10
+    workers: 2
     headers:
       "Accept":
         - "*/*"
-  - name: google2
-    url: "https://google.com"
-    delay: 5000 # 5,000ms, or 5s
-    jitter: 0.1
-    headers:
-      "Accept":
-        - "*/*"
+    otel_enabled: true

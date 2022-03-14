@@ -1,10 +1,10 @@
 version: "3.4"
 services:
-  slowpoke:
-    image: wperron/slowpoke:latest
+  trace-server:
+    image: wperron/trace-server:latest
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: ./cmd/trace-server/Dockerfile
     ports:
       - 8080:8080
     depends_on:
@@ -15,6 +15,18 @@ services:
       driver: loki
       options:
         loki-url: http://localhost:3100/loki/api/v1/push
+
+  zombie:
+    image: wperron/zombie:latest
+    build:
+      context: .
+      dockerfile: ./cmd/zombie/Dockerfile
+    ports:
+      - 8082:8082
+    volumes:
+      - ./zombie.yaml:/zombie.yaml
+    depends_on:
+      - trace-server
 
   tempo:
     image: grafana/tempo:1.3.0
