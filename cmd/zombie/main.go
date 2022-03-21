@@ -54,14 +54,10 @@ func init() {
 }
 
 func main() {
-	// Initialize context.
-	ctx := context.Background()
-
-	// Set up channel on which to send termination signal notifications.
-	// We must use a buffered channel or risk missing the signal
-	// if we're not ready to receive when the signal is sent.
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	// Initialize context with signal.NotifyContext, this context will watch
+	// for the listed signals before sending <-Done()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Parse command line args
 	flag.Parse()
@@ -158,7 +154,7 @@ func main() {
 	}()
 
 	// Block until a signal is received.
-	s := <-sigs
+	s := <-ctx.Done()
 	_ = logger.Log(fmt.Sprintf("Got signal: %s", s))
 }
 
