@@ -44,16 +44,6 @@ type Target struct {
 	// applied in each direction so that a value of `0.2` means ±20%
 	Jitter float64 `yaml:"jitter"`
 
-	// TraceHeader contains the name of the trace ID header. If set, each
-	// response will be anotated with it.
-	TraceHeader string `yaml:"trace_header,omitempty"`
-
-	// OtelEnabled can be set to true if the downstream server is Trace Context
-	// aware. In that case, the zombie script will instrument requests with a
-	// Traceparent header. Traces are exported using the stdout exporter from
-	// OpenTelemetry Go.
-	OtelEnabled bool `yaml:"otel_enabled,omitempty"`
-
 	// Workers defines how many concurrent goroutines to spawn to generate load
 	// concurrently. Defaults to 1.
 	Workers int `yaml:"workers,omitempty"`

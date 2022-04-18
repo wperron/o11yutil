@@ -11,4 +11,3 @@ targets:
     headers:
       "Accept":
         - "*/*"
-    otel_enabled: true

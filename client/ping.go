@@ -15,6 +15,8 @@ import (
 	"github.com/wperron/o11yutil/config"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -33,7 +35,7 @@ var (
 )
 
 type Pinger interface {
-	Ping(config.Target, chan<- Result, chan<- error)
+	Ping(context.Context, config.Target)
 }
 
 type pinger struct {
@@ -52,7 +54,6 @@ type Result struct {
 }
 
 func init() {
-	// do something
 	inFlightGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "client_in_flight_requests",
@@ -128,7 +129,7 @@ func NewInstrumentedPinger(target string, tracer trace.Tracer) *pinger {
 	}
 }
 
-func (p *pinger) Ping(ctx context.Context, t config.Target, out chan<- Result, e chan<- error) {
+func (p *pinger) Ping(ctx context.Context, t config.Target) {
 	u, err := url.Parse(t.Url)
 	if err != nil {
 		log.Fatalf("unable to parse URL %s", t.Url)
@@ -156,43 +157,35 @@ func (p *pinger) Ping(ctx context.Context, t config.Target, out chan<- Result, e
 
 		time.Sleep(Jitter(delay, jitter))
 
-		start := time.Now()
+		currCtx, span := p.tracer.Start(ctx, "zombie.ping",
+			trace.WithSpanKind(trace.SpanKindClient),
+			trace.WithAttributes(
+				attribute.String("target", u.Host),
+			))
 
-		var span trace.Span
-		if p.tracer != nil {
-			var currCtx context.Context
-			currCtx, span = p.tracer.Start(ctx, "zombie.ping",
-				trace.WithSpanKind(trace.SpanKindClient),
-				trace.WithAttributes(
-					attribute.String("target", u.Host),
-				))
+		// Overwrite the request context for the one containing the trace context
+		req = *req.WithContext(currCtx)
 
-			// Overwrite the request context for the one containing the trace context
-			req = *req.WithContext(currCtx)
-		}
+		span.SetAttributes(semconv.HTTPClientAttributesFromHTTPRequest(&req)...)
 
 		res, err := p.client.Do(&req)
-		if span != nil {
-			span.End()
-		}
-		lat := time.Since(start)
 		if err != nil {
-			e <- fmt.Errorf("error: %s", err)
+			span.RecordError(err)
+			span.SetStatus(codes.Error, fmt.Sprintf("client error: %s", err))
 		} else {
 			// Reading and closing the body is important to ensure that the file
 			// descriptor is not leaked.
 			_, _ = ioutil.ReadAll(res.Body)
 			_ = res.Body.Close()
-			out <- Result{
-				Name:       t.Name,
-				Method:     "GET",
-				Status:     res.StatusCode,
-				StatusText: res.Status,
-				URL:        t.Url,
-				Latency:    int(lat.Milliseconds()),
-				TraceID:    res.Header.Get(t.TraceHeader),
-			}
+
+			span.SetAttributes(
+				semconv.HTTPAttributesFromHTTPStatusCode(res.StatusCode)...,
+			)
 		}
+
+		// Because this is an infinite loop, `defer` will only leak spans forever
+		// hence the need to "manually" end each span
+		span.End()
 	}
 }
 

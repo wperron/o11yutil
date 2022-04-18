@@ -23,7 +23,6 @@ import (
 	"github.com/wperron/o11yutil/config"
 	"github.com/wperron/o11yutil/debugprocessor"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
@@ -90,25 +89,13 @@ func main() {
 		InsecureSkipVerify: true,
 	}
 
-	// If some targets have support for OpenTelemetry traces, initialize the
-	// tracer globally.
-	if someOtel(conf) {
-		shut, err := initTracing(ctx)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		defer shut() // nolint
-		tracer = otel.Tracer("zombie")
-
-		// Start root span
-		var span trace.Span
-		ctx, span = tracer.Start(ctx, "zombie.main")
-		defer span.End()
+	shut, err := initTracing(ctx)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
-
-	out := make(chan client.Result)
-	errors := make(chan error)
+	defer shut() // nolint
+	tracer = otel.Tracer("zombie")
 
 	for _, t := range conf.Targets {
 		ns := t.Name
@@ -122,36 +109,10 @@ func main() {
 		}
 
 		for i := 0; i < workers; i++ {
-			ctx, span := tracer.Start(ctx, "zombie.pingerTask",
-				trace.WithAttributes(
-					attribute.Int("worker", i),
-					attribute.String("target", t.Name),
-					attribute.Int64("delay", t.Delay),
-					attribute.Float64("jitter", t.Jitter),
-				))
-			defer span.End()
-
 			pinger := client.NewInstrumentedPinger(ns, tracer)
-			go pinger.Ping(ctx, t, out, errors)
+			go pinger.Ping(ctx, t)
 		}
 	}
-
-	go func() {
-		for m := range out {
-			vals := []interface{}{"target", m.Name, "method", m.Method, "status", m.Status, "url", m.URL, "latency", m.Latency}
-			if m.TraceID != "" {
-				vals = append(vals, "trace_id", m.TraceID)
-			}
-			_ = logger.Log(vals...)
-		}
-	}()
-
-	go func() {
-		for e := range errors {
-			_ = logger.Log("error", e)
-			os.Exit(1)
-		}
-	}()
 
 	// Block until a signal is received.
 	s := <-ctx.Done()
@@ -169,25 +130,10 @@ func makeLogger(f string, out io.Writer) (log.Logger, error) {
 	}
 }
 
-// someOtel returns true if at least one target has OtelEnabled=true
-func someOtel(conf *config.Config) bool {
-	for _, t := range conf.Targets {
-		if t.OtelEnabled {
-			return true
-		}
-	}
-	return false
-}
-
 type shutdown func() error
 
 // initTracing initializes the OpenTelemetry stdout exporter.
 func initTracing(ctx context.Context) (shutdown, error) {
-	f, err := os.Create("traces.txt")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create trace file: %s", err)
-	}
-
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String("zombie"),
@@ -197,7 +143,7 @@ func initTracing(ctx context.Context) (shutdown, error) {
 		return nil, fmt.Errorf("creating otel resource: %v", err)
 	}
 
-	debug := debugprocessor.New().WithWriter(f).Build()
+	debug := debugprocessor.New().WithWriter(os.Stdout).Build()
 	tracerProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
 		sdktrace.WithSpanProcessor(debug),
@@ -225,14 +171,10 @@ func printSummary(c config.Config) {
 	}
 
 	for _, t := range c.Targets {
-		otel := "disabled"
-		if t.OtelEnabled {
-			otel = "enabled"
-		}
 		if t.Name != "" {
-			fmt.Printf("target name: %s at %s, base delay: %d ms, jitter: %f, otel: %s\n", t.Name, t.Url, t.Duration().Milliseconds(), t.Jitter, otel)
+			fmt.Printf("target name: %s at %s, base delay: %d ms, jitter: %f\n", t.Name, t.Url, t.Duration().Milliseconds(), t.Jitter)
 		} else {
-			fmt.Printf("target name: %s, base delay: %d ms, jitter: %f, otel: %s\n", t.Url, t.Duration().Milliseconds(), t.Jitter, otel)
+			fmt.Printf("target name: %s, base delay: %d ms, jitter: %f\n", t.Url, t.Duration().Milliseconds(), t.Jitter)
 		}
 	}
 	fmt.Println("")

@@ -8,6 +8,8 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -33,10 +35,14 @@ var (
 )
 
 func main() {
+	// Initialize context with signal.NotifyContext, this context will watch
+	// for the listed signals before sending <-Done()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	flag.Parse()
 
 	// Setup tracing
-	ctx := context.Background()
 	exp, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithInsecure(),
 		otlptracegrpc.WithEndpoint(*traceEndpoint),
