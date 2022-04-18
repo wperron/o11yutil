@@ -1,6 +1,6 @@
 module github.com/wperron/o11yutil
 
-go 1.17
+go 1.18
 
 require (
 	github.com/fatih/color v1.13.0
@@ -32,7 +32,6 @@ require (
 	github.com/prometheus/common v0.26.0 // indirect
 	github.com/prometheus/procfs v0.6.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.1.0 // indirect
-	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.4.1 // indirect
 	go.opentelemetry.io/otel/internal/metric v0.24.0 // indirect
 	go.opentelemetry.io/otel/metric v0.24.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.9.0 // indirect
