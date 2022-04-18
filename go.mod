@@ -3,7 +3,6 @@ module github.com/wperron/o11yutil
 go 1.18
 
 require (
-	github.com/fatih/color v1.13.0
 	github.com/go-kit/kit v0.9.0
 	github.com/prometheus/client_golang v1.11.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.26.1
@@ -25,8 +24,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
-	github.com/mattn/go-colorable v0.1.9 // indirect
-	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.26.0 // indirect

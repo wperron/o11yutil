@@ -16,7 +16,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/fatih/color"
 	"github.com/go-kit/kit/log"
 	"github.com/wperron/o11yutil/api"
 	"github.com/wperron/o11yutil/client"
@@ -40,7 +39,6 @@ var (
 
 var (
 	configPath = flag.String("config", "", "The location of the config file.")
-	noColor    = flag.Bool("no-color", false, "Suppress colors from the output")
 	format     = flag.String("format", "logfmt", "Log output format. Defaults to 'logfmt'")
 	// TODO(wperron) add verbose and quiet options
 )
@@ -160,11 +158,7 @@ func initTracing(ctx context.Context) (shutdown, error) {
 
 func printSummary(c config.Config) {
 	fmt.Println("Zombie started")
-	if noColor != nil && *noColor {
-		fmt.Printf("version=%s branch=%s revision=%s\n", Version, Branch, Revision)
-	} else {
-		fmt.Printf("version=%s branch=%s revision=%s\n", color.GreenString(Version), color.GreenString(Branch), color.GreenString(Revision))
-	}
+	fmt.Printf("version=%s branch=%s revision=%s\n", Version, Branch, Revision)
 
 	if c.Api != nil && c.Api.Enabled {
 		fmt.Printf("API enabled on %s\n", c.Api.Addr)
